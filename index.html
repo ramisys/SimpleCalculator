@@ -98,41 +98,155 @@ const buttons = document.querySelectorAll('.button-container button');
 // Initialize the display to show 0 initially
 digitContainer.textContent = '0';
 
-// Add click event listeners to each button
-buttons.forEach(button => {
-    button.addEventListener('click', () => {
-        const buttonValue = button.textContent;
+const OPERATORS = new Set(['+', '-', '*', '÷', '/']);
 
-        // If the button is "AC", reset the display
-        if (buttonValue === 'AC') {
-            digitContainer.textContent = '0';
+function isOperator(char) {
+  return OPERATORS.has(char);
+}
+
+function normalizeExpression(expression) {
+  // Replace all occurrences of ÷ with /
+  return expression.replace(/÷/g, '/');
+}
+
+function getPrecedence(operator) {
+  if (operator === '+' || operator === '-') return 1;
+  if (operator === '*' || operator === '/') return 2;
+  return 0;
+}
+
+function applyOperation(leftOperand, rightOperand, operator) {
+  switch (operator) {
+    case '+':
+      return leftOperand + rightOperand;
+    case '-':
+      return leftOperand - rightOperand;
+    case '*':
+      return leftOperand * rightOperand;
+    case '/':
+      if (rightOperand === 0) throw new Error('Division by zero');
+      return leftOperand / rightOperand;
+    default:
+      throw new Error('Invalid operator');
+  }
+}
+
+function evaluateExpression(expression) {
+  // Security fix: avoid eval by using a simple shunting-yard based evaluator
+  const expr = normalizeExpression(expression);
+
+  const values = [];
+  const ops = [];
+  let numberBuffer = '';
+
+  const flushNumber = () => {
+    if (numberBuffer.length > 0) {
+      values.push(Number(numberBuffer));
+      numberBuffer = '';
+    }
+  };
+
+  for (let i = 0; i < expr.length; i += 1) {
+    const ch = expr[i];
+
+    if (/\d/.test(ch)) {
+      numberBuffer += ch;
+      continue;
+    }
+
+    if (isOperator(ch)) {
+      // Prevent malformed expressions like leading or double operators
+      flushNumber();
+      while (
+        ops.length > 0 && getPrecedence(ops[ops.length - 1]) >= getPrecedence(ch)
+      ) {
+        const op = ops.pop();
+        const right = values.pop();
+        const left = values.pop();
+        values.push(applyOperation(left, right, op));
+      }
+      ops.push(ch === '÷' ? '/' : ch);
+      continue;
+    }
+
+    if (ch === ' ') {
+      continue;
+    }
+
+    throw new Error('Invalid character');
+  }
+
+  flushNumber();
+
+  while (ops.length > 0) {
+    const op = ops.pop();
+    const right = values.pop();
+    const left = values.pop();
+    values.push(applyOperation(left, right, op));
+  }
+
+  if (values.length !== 1 || Number.isNaN(values[0])) {
+    throw new Error('Invalid expression');
+  }
+
+  return values[0];
+}
+
+// Add click event listeners to each button
+buttons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const buttonValue = button.textContent;
+
+    if (buttonValue === 'AC') {
+      digitContainer.textContent = '0';
+      return;
+    }
+
+    if (buttonValue === '=') {
+      try {
+        const result = evaluateExpression(digitContainer.textContent);
+        if (result === 143) {
+          digitContainer.textContent = 'I miss you :(';
+        } else {
+          // Trim trailing .0 for integers
+          const normalized = Number.isInteger(result) ? result.toString() : String(result);
+          digitContainer.textContent = normalized;
         }
-        // If the button is an operator or a number, update the display
-        else if (buttonValue === '+' || buttonValue === '-' || buttonValue === '*' || buttonValue === '÷' || !isNaN(buttonValue)) {
-            // Replace initial "0" with the first number pressed
-            if (digitContainer.textContent === '0') {
-                digitContainer.textContent = buttonValue;
-            } else {
-                digitContainer.textContent += buttonValue; // Append the new value
-            }
-        }
-        // If the button is "=", evaluate the expression
-        else if (buttonValue === '=') {
-            try {
-                // Replace "÷" with "/" for evaluation
-                const result = eval(digitContainer.textContent.replace('÷', '/'));
-                
-                // Check if the result is 143
-                if (result === 143) {
-                    digitContainer.textContent = 'I miss you :(';
-                } else {
-                    digitContainer.textContent = result;
-                }
-            } catch (error) {
-                digitContainer.textContent = 'Error'; // Display error for invalid expressions
-            }
-        }
-    });
+      } catch (error) {
+        digitContainer.textContent = 'Error';
+      }
+      return;
+    }
+
+    // Handle numbers and operators
+    const isNumber = !Number.isNaN(Number(buttonValue));
+
+    if (isNumber) {
+      // Replace initial 0 with the first number pressed
+      if (digitContainer.textContent === '0') {
+        digitContainer.textContent = buttonValue;
+      } else {
+        digitContainer.textContent += buttonValue;
+      }
+      return;
+    }
+
+    if (isOperator(buttonValue)) {
+      const current = digitContainer.textContent;
+      const lastChar = current[current.length - 1];
+
+      // Prevent starting with an operator or stacking operators
+      if (current === '0') return; // do not allow operator as the first input
+
+      if (isOperator(lastChar)) {
+        // Replace the last operator with the new one (prevents consecutive operators)
+        digitContainer.textContent = current.slice(0, -1) + buttonValue;
+      } else {
+        digitContainer.textContent += buttonValue;
+      }
+      return;
+    }
+  });
 });
   </script>
 </body>
